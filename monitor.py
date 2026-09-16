@@ -80,11 +80,9 @@ def run():
             count = int(match.group(1))
             print(f"--> Extracted Count: {count} <--")
 
-            if count > 0:
-                print(f"Found {count} critiques! Sending push notification...")
-                notify(f"MeetCritique Alert: {count} critique(s) available for review right now!")
-            else:
-                print("Count is 0. No notification sent.")
+            # TEST RUN: Always send notification to verify delivery
+            print(f"Sending test notification for count ({count})...")
+            notify(f"Test Successful! The monitor is live. Current available critiques: {count}")
 
         except Exception as e:
             print(f"Error encountered: {e}")
