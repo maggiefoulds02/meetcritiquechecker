@@ -19,7 +19,6 @@ def notify(message):
 
 def run():
     with sync_playwright() as p:
-        # Launch with arguments to prevent bot detection and rendering issues
         browser = p.chromium.launch(
             headless=True,
             args=[
@@ -38,9 +37,7 @@ def run():
         try:
             print("1. Loading login page...")
             page.goto(LOGIN_URL, wait_until="networkidle", timeout=30000)
-            page.screenshot(path="step1_login_page.png")
 
-            # Click the 'Login' tab pill if present to ensure the fields are active
             login_tab = page.locator('.um-login-nav, button:has-text("Login"), a:has-text("Login")').first
             if login_tab.count() > 0 and login_tab.is_visible():
                 try:
@@ -58,8 +55,6 @@ def run():
             pass_input.wait_for(state="visible", timeout=10000)
             pass_input.fill(PASSWORD)
 
-            page.screenshot(path="step2_filled.png")
-
             print("3. Submitting login...")
             submit_btn = page.locator('input[type="submit"][value*="Log"], button:has-text("Login"):visible, input[id="um-submit-btn"]:visible').first
             if submit_btn.count() > 0 and submit_btn.is_visible():
@@ -67,26 +62,32 @@ def run():
             else:
                 pass_input.press("Enter")
 
-            # Wait for authentication redirect
-            page.wait_for_timeout(6000)
-            page.screenshot(path="step3_after_submit.png")
+            page.wait_for_timeout(5000)
 
             print("4. Navigating to dashboard...")
             page.goto(DASHBOARD_URL, wait_until="networkidle", timeout=30000)
-            page.screenshot(path="step4_dashboard.png")
+            page.wait_for_timeout(3000)
 
             print("5. Parsing critique count...")
-            # Regex pattern matches words separated by spaces or newlines
-            target_label = page.locator("text=/meetcritiques\\s+available/i").first
-            target_label.wait_for(timeout=15000)
+            # Use JavaScript directly in the browser to scan elements for "available"
+            card_data = page.evaluate("""() => {
+                const elements = Array.from(document.querySelectorAll('div, p, span, h1, h2, h3, h4'));
+                const match = elements.find(el => {
+                    const text = el.innerText || "";
+                    return text.toLowerCase().includes("available") && text.toLowerCase().includes("meetcritique");
+                });
+                return match ? match.innerText : null;
+            }""")
 
-            # Get the parent card container that holds both the label and the number
-            card = target_label.locator("xpath=ancestor::div[contains(@class, 'card') or contains(@class, 'box') or string-length(text()) < 100]").last
-            card_text = card.inner_text()
-            print(f"Card raw text: {repr(card_text)}")
+            print(f"Extracted card text: {repr(card_data)}")
 
-            # Extract numbers from the card text
-            numbers = re.findall(r'\d+', card_text)
+            if not card_data:
+                # Fallback: inspect the 4 top header boxes directly
+                page.screenshot(path="dashboard_fallback.png")
+                raise Exception("Could not find the 'meetcritiques available' card on the page.")
+
+            # Grab the digits from the card text
+            numbers = re.findall(r'\d+', card_data)
             count = int(numbers[-1]) if numbers else 0
             print(f"--> SUCCESS! Current available critiques: {count} <--")
 
@@ -96,8 +97,6 @@ def run():
         except Exception as e:
             print(f"Error encountered: {e}")
             page.screenshot(path="error_state.png")
-            with open("error_page.html", "w", encoding="utf-8") as f:
-                f.write(page.content())
             raise e
         finally:
             browser.close()
