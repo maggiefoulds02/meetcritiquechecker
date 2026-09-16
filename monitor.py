@@ -40,7 +40,7 @@ def run():
             page.goto(LOGIN_URL, wait_until="networkidle", timeout=30000)
             page.screenshot(path="step1_login_page.png")
 
-            # Click the 'Login' tab pill at the top of the box if it exists, to ensure login fields are active
+            # Click the 'Login' tab pill if present to ensure the fields are active
             login_tab = page.locator('.um-login-nav, button:has-text("Login"), a:has-text("Login")').first
             if login_tab.count() > 0 and login_tab.is_visible():
                 try:
@@ -50,7 +50,6 @@ def run():
                     pass
 
             print("2. Filling visible credentials...")
-            # Use state='visible' so Playwright skips the hidden registration fields
             user_input = page.locator('input[id^="user_login"]:visible, input[name^="user_login"]:visible, input[type="text"]:visible').first
             user_input.wait_for(state="visible", timeout=15000)
             user_input.fill(EMAIL)
@@ -62,7 +61,6 @@ def run():
             page.screenshot(path="step2_filled.png")
 
             print("3. Submitting login...")
-            # Click the primary submit button in the login form or hit enter
             submit_btn = page.locator('input[type="submit"][value*="Log"], button:has-text("Login"):visible, input[id="um-submit-btn"]:visible').first
             if submit_btn.count() > 0 and submit_btn.is_visible():
                 submit_btn.click()
@@ -77,13 +75,17 @@ def run():
             page.goto(DASHBOARD_URL, wait_until="networkidle", timeout=30000)
             page.screenshot(path="step4_dashboard.png")
 
-            # Verify and read the critique count
             print("5. Parsing critique count...")
-            page.wait_for_selector("text=meetcritiques available:", timeout=15000)
-            
-            card = page.locator('div:has-text("meetcritiques available:")').last
+            # Regex pattern matches words separated by spaces or newlines
+            target_label = page.locator("text=/meetcritiques\\s+available/i").first
+            target_label.wait_for(timeout=15000)
+
+            # Get the parent card container that holds both the label and the number
+            card = target_label.locator("xpath=ancestor::div[contains(@class, 'card') or contains(@class, 'box') or string-length(text()) < 100]").last
             card_text = card.inner_text()
-            
+            print(f"Card raw text: {repr(card_text)}")
+
+            # Extract numbers from the card text
             numbers = re.findall(r'\d+', card_text)
             count = int(numbers[-1]) if numbers else 0
             print(f"--> SUCCESS! Current available critiques: {count} <--")
