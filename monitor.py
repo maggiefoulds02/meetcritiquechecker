@@ -14,7 +14,17 @@ def notify(message):
     requests.post(
         f"https://ntfy.sh/{NTFY_TOPIC}",
         data=message.encode("utf-8"),
-        headers={"Title": "MeetCritique Alert", "Priority": "urgent", "Tags": "rotating_light"}
+        headers={
+            "Title": "MeetCritique Alert",
+            "Priority": "urgent",
+            "Tags": "gymnastics,rotating_light",
+            # Direct link to the MeetCritique icon/logo
+            "Icon": "https://www.meetcritique.com/wp-content/uploads/2023/08/MC_loggedin_stacked-1.svg",
+            # Tapping the notification opens your judge dashboard directly
+            "Click": "https://www.meetcritique.com/dashboard/",
+            # Custom notification sound (optional: e.g., 'alarm', 'chime', 'bell')
+            "Sound": "alarm",
+        }
     )
 
 def run():
