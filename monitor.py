@@ -46,7 +46,7 @@ def run():
                 except Exception:
                     pass
 
-            print("2. Filling visible credentials...")
+            print("2. Filling credentials...")
             user_input = page.locator('input[id^="user_login"]:visible, input[name^="user_login"]:visible, input[type="text"]:visible').first
             user_input.wait_for(state="visible", timeout=15000)
             user_input.fill(EMAIL)
@@ -55,7 +55,7 @@ def run():
             pass_input.wait_for(state="visible", timeout=10000)
             pass_input.fill(PASSWORD)
 
-            print("3. Submitting login...")
+            print("3. Submitting...")
             submit_btn = page.locator('input[type="submit"][value*="Log"], button:has-text("Login"):visible, input[id="um-submit-btn"]:visible').first
             if submit_btn.count() > 0 and submit_btn.is_visible():
                 submit_btn.click()
@@ -64,35 +64,51 @@ def run():
 
             page.wait_for_timeout(5000)
 
-            print("4. Navigating to dashboard...")
+            print("4. Opening dashboard...")
             page.goto(DASHBOARD_URL, wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(3000)
 
-            print("5. Parsing critique count...")
-            # Use JavaScript directly in the browser to scan elements for "available"
-            card_data = page.evaluate("""() => {
-                const elements = Array.from(document.querySelectorAll('div, p, span, h1, h2, h3, h4'));
-                const match = elements.find(el => {
-                    const text = el.innerText || "";
-                    return text.toLowerCase().includes("available") && text.toLowerCase().includes("meetcritique");
+            print("5. Parsing target counter...")
+            # Targeted script: find the element containing 'meetcritiques' and 'available',
+            # then find the closest large number inside that specific card.
+            count = page.evaluate("""() => {
+                // Find all leaf elements that mention 'available'
+                const allElements = Array.from(document.querySelectorAll('*'));
+                
+                const label = allElements.find(el => {
+                    const txt = el.innerText || "";
+                    return txt.toLowerCase().includes("meetcritiques") && 
+                           txt.toLowerCase().includes("available") &&
+                           el.children.length <= 2;
                 });
-                return match ? match.innerText : null;
+
+                if (!label) return null;
+
+                // Move up to the containing card/box
+                let card = label;
+                while (card && card.parentElement && card.offsetHeight < 250 && card.offsetWidth < 400) {
+                    card = card.parentElement;
+                }
+
+                // Look for the element displaying the big stat number inside this card
+                const innerText = card ? card.innerText : label.innerText;
+                console.log("Found card content:", innerText);
+                
+                // Match lines or words that are solely numbers
+                const matches = innerText.match(/\\b\\d+\\b/g);
+                return matches ? parseInt(matches[0], 10) : 0;
             }""")
 
-            print(f"Extracted card text: {repr(card_data)}")
+            print(f"--> Extracted Count: {count} <--")
 
-            if not card_data:
-                # Fallback: inspect the 4 top header boxes directly
-                page.screenshot(path="dashboard_fallback.png")
-                raise Exception("Could not find the 'meetcritiques available' card on the page.")
-
-            # Grab the digits from the card text
-            numbers = re.findall(r'\d+', card_data)
-            count = int(numbers[-1]) if numbers else 0
-            print(f"--> SUCCESS! Current available critiques: {count} <--")
+            if count is None:
+                raise Exception("Unable to isolate the stat box.")
 
             if count > 0:
+                print(f"Triggering notification for {count} critiques...")
                 notify(f"MeetCritique Alert: {count} critique(s) available for review right now!")
+            else:
+                print("Count is 0. No notification sent.")
 
         except Exception as e:
             print(f"Error encountered: {e}")
