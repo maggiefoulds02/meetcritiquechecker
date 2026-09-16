@@ -19,55 +19,86 @@ def notify(message):
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        # Emulate a standard desktop user agent
+        # Launch with arguments to prevent bot detection and rendering issues
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--window-size=1920,1080"
+            ]
+        )
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         )
         page = context.new_page()
 
-        print("Navigating to login page...")
-        page.goto(LOGIN_URL, wait_until="domcontentloaded")
+        try:
+            print("1. Loading login page...")
+            page.goto(LOGIN_URL, wait_until="networkidle", timeout=30000)
+            page.screenshot(path="step1_login_page.png")
 
-        # Target the input directly by its label or name
-        username_field = page.locator('input[name*="username"], input[name*="user_login"], input[id*="username"], input[type="text"]').first
-        username_field.wait_for(timeout=15000)
-        username_field.fill(EMAIL)
+            # Click the 'Login' tab pill at the top of the box if it exists, to ensure login fields are active
+            login_tab = page.locator('.um-login-nav, button:has-text("Login"), a:has-text("Login")').first
+            if login_tab.count() > 0 and login_tab.is_visible():
+                try:
+                    login_tab.click()
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass
 
-        password_field = page.locator('input[type="password"]').first
-        password_field.fill(PASSWORD)
+            print("2. Filling visible credentials...")
+            # Use state='visible' so Playwright skips the hidden registration fields
+            user_input = page.locator('input[id^="user_login"]:visible, input[name^="user_login"]:visible, input[type="text"]:visible').first
+            user_input.wait_for(state="visible", timeout=15000)
+            user_input.fill(EMAIL)
 
-        # Click the blue 'Login' button at the bottom of the card
-        login_btn = page.locator('button:has-text("Login"), input[value="Login"]').first
-        if login_btn.count() > 0:
-            login_btn.click()
-        else:
-            page.keyboard.press("Enter")
+            pass_input = page.locator('input[id^="user_password"]:visible, input[name^="user_password"]:visible, input[type="password"]:visible').first
+            pass_input.wait_for(state="visible", timeout=10000)
+            pass_input.fill(PASSWORD)
 
-        # Wait for navigation/auth to complete
-        page.wait_for_timeout(5000)
+            page.screenshot(path="step2_filled.png")
 
-        # Open the dashboard
-        print("Navigating to dashboard...")
-        page.goto(DASHBOARD_URL, wait_until="networkidle")
+            print("3. Submitting login...")
+            # Click the primary submit button in the login form or hit enter
+            submit_btn = page.locator('input[type="submit"][value*="Log"], button:has-text("Login"):visible, input[id="um-submit-btn"]:visible').first
+            if submit_btn.count() > 0 and submit_btn.is_visible():
+                submit_btn.click()
+            else:
+                pass_input.press("Enter")
 
-        # Wait for the card text to appear
-        page.wait_for_selector("text=meetcritiques available:", timeout=15000)
+            # Wait for authentication redirect
+            page.wait_for_timeout(6000)
+            page.screenshot(path="step3_after_submit.png")
 
-        # Grab the container holding "meetcritiques available"
-        card = page.locator('div:has-text("meetcritiques available:")').last
-        card_text = card.inner_text()
+            print("4. Navigating to dashboard...")
+            page.goto(DASHBOARD_URL, wait_until="networkidle", timeout=30000)
+            page.screenshot(path="step4_dashboard.png")
 
-        # Extract all numbers from the card text
-        numbers = re.findall(r'\d+', card_text)
-        count = int(numbers[-1]) if numbers else 0
+            # Verify and read the critique count
+            print("5. Parsing critique count...")
+            page.wait_for_selector("text=meetcritiques available:", timeout=15000)
+            
+            card = page.locator('div:has-text("meetcritiques available:")').last
+            card_text = card.inner_text()
+            
+            numbers = re.findall(r'\d+', card_text)
+            count = int(numbers[-1]) if numbers else 0
+            print(f"--> SUCCESS! Current available critiques: {count} <--")
 
-        print(f"Current available critiques: {count}")
+            if count > 0:
+                notify(f"MeetCritique Alert: {count} critique(s) available for review right now!")
 
-        if count > 0:
-            notify(f"MeetCritique Alert: {count} critique(s) available for review right now!")
-
-        browser.close()
+        except Exception as e:
+            print(f"Error encountered: {e}")
+            page.screenshot(path="error_state.png")
+            with open("error_page.html", "w", encoding="utf-8") as f:
+                f.write(page.content())
+            raise e
+        finally:
+            browser.close()
 
 if __name__ == "__main__":
     run()
