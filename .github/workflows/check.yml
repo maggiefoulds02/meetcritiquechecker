@@ -3,7 +3,7 @@ name: Check MeetCritique
 on:
   schedule:
     # Runs roughly every 15 minutes, 24/7
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch: # Keeps manual button available
 
 jobs:
