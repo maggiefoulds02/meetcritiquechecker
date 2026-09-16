@@ -55,7 +55,7 @@ def run():
             pass_input.wait_for(state="visible", timeout=10000)
             pass_input.fill(PASSWORD)
 
-            print("3. Submitting...")
+            print("3. Submitting login...")
             submit_btn = page.locator('input[type="submit"][value*="Log"], button:has-text("Login"):visible, input[id="um-submit-btn"]:visible').first
             if submit_btn.count() > 0 and submit_btn.is_visible():
                 submit_btn.click()
@@ -69,43 +69,19 @@ def run():
             page.wait_for_timeout(3000)
 
             print("5. Parsing target counter...")
-            # Targeted script: find the element containing 'meetcritiques' and 'available',
-            # then find the closest large number inside that specific card.
-            count = page.evaluate("""() => {
-                // Find all leaf elements that mention 'available'
-                const allElements = Array.from(document.querySelectorAll('*'));
-                
-                const label = allElements.find(el => {
-                    const txt = el.innerText || "";
-                    return txt.toLowerCase().includes("meetcritiques") && 
-                           txt.toLowerCase().includes("available") &&
-                           el.children.length <= 2;
-                });
+            body_text = page.locator("body").inner_text()
 
-                if (!label) return null;
+            # Target the specific number directly following "meetcritiques available:"
+            match = re.search(r'meetcritiques\s+available:\s*(\d+)', body_text, re.IGNORECASE)
 
-                // Move up to the containing card/box
-                let card = label;
-                while (card && card.parentElement && card.offsetHeight < 250 && card.offsetWidth < 400) {
-                    card = card.parentElement;
-                }
+            if not match:
+                raise Exception("Could not find 'meetcritiques available:' counter in page text.")
 
-                // Look for the element displaying the big stat number inside this card
-                const innerText = card ? card.innerText : label.innerText;
-                console.log("Found card content:", innerText);
-                
-                // Match lines or words that are solely numbers
-                const matches = innerText.match(/\\b\\d+\\b/g);
-                return matches ? parseInt(matches[0], 10) : 0;
-            }""")
-
+            count = int(match.group(1))
             print(f"--> Extracted Count: {count} <--")
 
-            if count is None:
-                raise Exception("Unable to isolate the stat box.")
-
             if count > 0:
-                print(f"Triggering notification for {count} critiques...")
+                print(f"Found {count} critiques! Sending push notification...")
                 notify(f"MeetCritique Alert: {count} critique(s) available for review right now!")
             else:
                 print("Count is 0. No notification sent.")
