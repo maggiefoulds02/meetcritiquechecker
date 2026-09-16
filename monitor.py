@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -6,9 +7,8 @@ EMAIL = os.environ.get("MK_EMAIL")
 PASSWORD = os.environ.get("MK_PASSWORD")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 
-# Confirm this matches the exact URL where you enter your credentials
-LOGIN_URL = "https://meetcritique.com/login" 
-DASHBOARD_URL = "https://meetcritique.com/dashboard"
+LOGIN_URL = "https://www.meetcritique.com/login/"
+DASHBOARD_URL = "https://www.meetcritique.com/dashboard/"
 
 def notify(message):
     requests.post(
@@ -20,41 +20,52 @@ def notify(message):
 def run():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        # Emulate a standard desktop user agent
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
 
-        page.goto(LOGIN_URL, wait_until="networkidle")
+        print("Navigating to login page...")
+        page.goto(LOGIN_URL, wait_until="domcontentloaded")
 
-        # Save an image of the landing page to debug if it gets stuck
-        page.screenshot(path="login_debug.png")
+        # Target the input directly by its label or name
+        username_field = page.locator('input[name*="username"], input[name*="user_login"], input[id*="username"], input[type="text"]').first
+        username_field.wait_for(timeout=15000)
+        username_field.fill(EMAIL)
 
-        # Flexible selector for email / username field
-        email_input = page.locator('input[type="email"], input[name="email"], input[name="username"], input[type="text"]').first
-        email_input.wait_for(timeout=10000)
-        email_input.fill(EMAIL)
+        password_field = page.locator('input[type="password"]').first
+        password_field.fill(PASSWORD)
 
-        # Flexible selector for password field
-        pass_input = page.locator('input[type="password"]').first
-        pass_input.fill(PASSWORD)
-        
-        # Press Enter or click Submit
-        page.keyboard.press("Enter")
-        page.wait_for_load_state("networkidle")
+        # Click the blue 'Login' button at the bottom of the card
+        login_btn = page.locator('button:has-text("Login"), input[value="Login"]').first
+        if login_btn.count() > 0:
+            login_btn.click()
+        else:
+            page.keyboard.press("Enter")
 
-        # Navigate to Dashboard
+        # Wait for navigation/auth to complete
+        page.wait_for_timeout(5000)
+
+        # Open the dashboard
+        print("Navigating to dashboard...")
         page.goto(DASHBOARD_URL, wait_until="networkidle")
-        page.screenshot(path="dashboard_debug.png")
 
-        # Locate the card
-        card = page.locator("text=meetcritiques available:").locator("xpath=..")
-        text_content = card.inner_text()
+        # Wait for the card text to appear
+        page.wait_for_selector("text=meetcritiques available:", timeout=15000)
 
-        # Extract number
-        digits = "".join([c for c in text_content if c.isdigit()])
-        count = int(digits) if digits else 0
+        # Grab the container holding "meetcritiques available"
+        card = page.locator('div:has-text("meetcritiques available:")').last
+        card_text = card.inner_text()
+
+        # Extract all numbers from the card text
+        numbers = re.findall(r'\d+', card_text)
+        count = int(numbers[-1]) if numbers else 0
+
         print(f"Current available critiques: {count}")
 
         if count > 0:
-            notify(f"MeetCritique alert! {count} critiques are available for review now.")
+            notify(f"MeetCritique Alert: {count} critique(s) available for review right now!")
 
         browser.close()
 
