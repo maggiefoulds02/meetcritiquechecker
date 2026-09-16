@@ -1,0 +1,31 @@
+name: Check MeetCritique
+
+on:
+  schedule:
+    # Runs roughly every 15 minutes (cron syntax)
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI anytime
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install playwright requests
+          playwright install --with-deps chromium
+
+      - name: Run Check
+        env:
+          MK_EMAIL: ${{ secrets.MK_EMAIL }}
+          MK_PASSWORD: ${{ secrets.MK_PASSWORD }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python monitor.py
